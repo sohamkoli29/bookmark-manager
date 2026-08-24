@@ -2,6 +2,7 @@ import { GraphQLError } from "graphql";
 import type { Bookmark } from "@prisma/client";
 import type { GraphQLContext } from "../lib/context.js";
 import { paginateBookmarks } from "../lib/pagination.js";
+import { validateBookmarkInput } from "../lib/validation.js";
 
 interface BookmarksArgs {
   folderId?: string;
@@ -42,8 +43,6 @@ interface BookmarkConnection {
   pageInfo: { endCursor: string | null; hasNextPage: boolean };
 }
 
-// Relational-integrity checks — title/URL *format* validation is added
-// on top of these in Phase 6, this is just "does the referenced row exist".
 async function requireFolder(ctx: GraphQLContext, folderId: string): Promise<void> {
   const folder = await ctx.prisma.folder.findUnique({ where: { id: folderId } });
   if (!folder) {
@@ -96,7 +95,7 @@ export const bookmarkResolvers = {
       args: CreateBookmarkArgs,
       ctx: GraphQLContext
     ): Promise<Bookmark> => {
-      // Phase 6 adds title/URL format validation before this line.
+      validateBookmarkInput({ title: args.input.title, url: args.input.url });
       await requireFolder(ctx, args.input.folderId);
 
       return ctx.prisma.bookmark.create({
@@ -114,8 +113,8 @@ export const bookmarkResolvers = {
       args: UpdateBookmarkArgs,
       ctx: GraphQLContext
     ): Promise<Bookmark> => {
+      validateBookmarkInput({ title: args.input.title, url: args.input.url });
       await requireBookmark(ctx, args.id);
-      // Phase 6 adds title/URL format validation before this line.
 
       return ctx.prisma.bookmark.update({
         where: { id: args.id },
