@@ -1,0 +1,34 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Folder {
+  id        String     @id @default(cuid())
+  name      String
+  createdAt DateTime   @default(now())
+  bookmarks Bookmark[]
+
+  @@index([name])
+}
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  title     String
+  url       String
+  tags      String[] @default([])
+  folderId  String
+  folder    Folder   @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  // filtering by folder is the most common query
+  @@index([folderId])
+  // supports the `search` substring filter on title
+  @@index([title])
+  // supports cursor pagination ordered by createdAt, id as tiebreaker
+  @@index([createdAt, id])
+}
