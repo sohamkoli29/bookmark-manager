@@ -1,5 +1,7 @@
 import { GraphQLError } from "graphql";
+import type { Bookmark } from "@prisma/client";
 import type { GraphQLContext } from "../lib/context.js";
+import { paginateBookmarks } from "../lib/pagination.js";
 
 interface BookmarksArgs {
   folderId?: string;
@@ -35,27 +37,123 @@ interface MoveBookmarkArgs {
   folderId: string;
 }
 
+interface BookmarkConnection {
+  edges: { cursor: string; node: Bookmark }[];
+  pageInfo: { endCursor: string | null; hasNextPage: boolean };
+}
+
+// Relational-integrity checks — title/URL *format* validation is added
+// on top of these in Phase 6, this is just "does the referenced row exist".
+async function requireFolder(ctx: GraphQLContext, folderId: string): Promise<void> {
+  const folder = await ctx.prisma.folder.findUnique({ where: { id: folderId } });
+  if (!folder) {
+    throw new GraphQLError(`Folder with id "${folderId}" not found`, {
+      extensions: { code: "FOLDER_NOT_FOUND" },
+    });
+  }
+}
+
+async function requireBookmark(ctx: GraphQLContext, id: string): Promise<Bookmark> {
+  const bookmark = await ctx.prisma.bookmark.findUnique({ where: { id } });
+  if (!bookmark) {
+    throw new GraphQLError(`Bookmark with id "${id}" not found`, {
+      extensions: { code: "BOOKMARK_NOT_FOUND" },
+    });
+  }
+  return bookmark;
+}
+
 export const bookmarkResolvers = {
   Query: {
-    bookmarks: async (_parent: unknown, _args: BookmarksArgs, _ctx: GraphQLContext) => {
-      throw new GraphQLError("Not implemented yet");
+    bookmarks: async (
+      _parent: unknown,
+      args: BookmarksArgs,
+      ctx: GraphQLContext
+    ): Promise<BookmarkConnection> => {
+      const where = {
+        ...(args.folderId ? { folderId: args.folderId } : {}),
+        ...(args.search
+          ? { title: { contains: args.search, mode: "insensitive" as const } }
+          : {}),
+      };
+
+      const page = await paginateBookmarks({
+        where,
+        take: args.take,
+        cursor: args.cursor,
+      });
+
+      return {
+        edges: page.items.map((item) => ({ cursor: item.id, node: item })),
+        pageInfo: { endCursor: page.endCursor, hasNextPage: page.hasNextPage },
+      };
     },
   },
+
   Mutation: {
-    createBookmark: async (_parent: unknown, _args: CreateBookmarkArgs, _ctx: GraphQLContext) => {
-      throw new GraphQLError("Not implemented yet");
+    createBookmark: async (
+      _parent: unknown,
+      args: CreateBookmarkArgs,
+      ctx: GraphQLContext
+    ): Promise<Bookmark> => {
+      // Phase 6 adds title/URL format validation before this line.
+      await requireFolder(ctx, args.input.folderId);
+
+      return ctx.prisma.bookmark.create({
+        data: {
+          title: args.input.title,
+          url: args.input.url,
+          tags: args.input.tags ?? [],
+          folderId: args.input.folderId,
+        },
+      });
     },
-    updateBookmark: async (_parent: unknown, _args: UpdateBookmarkArgs, _ctx: GraphQLContext) => {
-      throw new GraphQLError("Not implemented yet");
+
+    updateBookmark: async (
+      _parent: unknown,
+      args: UpdateBookmarkArgs,
+      ctx: GraphQLContext
+    ): Promise<Bookmark> => {
+      await requireBookmark(ctx, args.id);
+      // Phase 6 adds title/URL format validation before this line.
+
+      return ctx.prisma.bookmark.update({
+        where: { id: args.id },
+        data: {
+          ...(args.input.title !== undefined ? { title: args.input.title } : {}),
+          ...(args.input.url !== undefined ? { url: args.input.url } : {}),
+          ...(args.input.tags !== undefined ? { tags: args.input.tags } : {}),
+        },
+      });
     },
-    deleteBookmark: async (_parent: unknown, _args: DeleteBookmarkArgs, _ctx: GraphQLContext) => {
-      throw new GraphQLError("Not implemented yet");
+
+    deleteBookmark: async (
+      _parent: unknown,
+      args: DeleteBookmarkArgs,
+      ctx: GraphQLContext
+    ): Promise<Bookmark> => {
+      await requireBookmark(ctx, args.id);
+      return ctx.prisma.bookmark.delete({ where: { id: args.id } });
     },
-    moveBookmark: async (_parent: unknown, _args: MoveBookmarkArgs, _ctx: GraphQLContext) => {
-      throw new GraphQLError("Not implemented yet");
+
+    moveBookmark: async (
+      _parent: unknown,
+      args: MoveBookmarkArgs,
+      ctx: GraphQLContext
+    ): Promise<Bookmark> => {
+      await requireBookmark(ctx, args.id);
+      await requireFolder(ctx, args.folderId);
+
+      return ctx.prisma.bookmark.update({
+        where: { id: args.id },
+        data: { folderId: args.folderId },
+      });
     },
   },
+
   Bookmark: {
-    // folder field resolver lands in Phase 5
+    folder: async (parent: Bookmark, _args: unknown, ctx: GraphQLContext) => {
+      return ctx.prisma.folder.findUniqueOrThrow({ where: { id: parent.folderId } });
+    },
   },
 };
