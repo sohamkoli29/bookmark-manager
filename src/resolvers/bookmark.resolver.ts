@@ -76,7 +76,7 @@ export const bookmarkResolvers = {
           : {}),
       };
 
-      const page = await paginateBookmarks({
+            const page = await paginateBookmarks(ctx.prisma, {
         where,
         take: args.take,
         cursor: args.cursor,

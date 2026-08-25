@@ -1,5 +1,4 @@
-import type { Bookmark, Prisma } from "@prisma/client";
-import { prisma } from "./prisma.js";
+import type { Bookmark, Prisma, PrismaClient } from "@prisma/client";
 
 export interface BookmarkPageArgs {
   where?: Prisma.BookmarkWhereInput;
@@ -16,11 +15,10 @@ export interface BookmarkPage {
 const DEFAULT_TAKE = 20;
 const MAX_TAKE = 100;
 
-export async function paginateBookmarks({
-  where,
-  take,
-  cursor,
-}: BookmarkPageArgs): Promise<BookmarkPage> {
+export async function paginateBookmarks(
+  prisma: Pick<PrismaClient, "bookmark">,
+  { where, take, cursor }: BookmarkPageArgs
+): Promise<BookmarkPage> {
   const pageSize = Math.min(Math.max(take ?? DEFAULT_TAKE, 1), MAX_TAKE);
 
   const results = await prisma.bookmark.findMany({
