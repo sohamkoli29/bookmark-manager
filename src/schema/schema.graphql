@@ -1,0 +1,71 @@
+"""
+A folder used to organize bookmarks.
+"""
+type Folder {
+  id: ID!
+  name: String!
+  createdAt: String!
+  bookmarks: [Bookmark!]!
+}
+
+"""
+A single saved bookmark, always belonging to a folder.
+"""
+type Bookmark {
+  id: ID!
+  title: String!
+  url: String!
+  tags: [String!]!
+  folderId: ID!
+  folder: Folder!
+  createdAt: String!
+}
+
+"""
+Cursor-paginated page of bookmarks.
+"""
+type BookmarkConnection {
+  edges: [BookmarkEdge!]!
+  pageInfo: PageInfo!
+}
+
+type BookmarkEdge {
+  cursor: ID!
+  node: Bookmark!
+}
+
+type PageInfo {
+  endCursor: ID
+  hasNextPage: Boolean!
+}
+
+type Query {
+  folders: [Folder!]!
+  folder(id: ID!): Folder
+  bookmarks(folderId: ID, search: String, take: Int, cursor: ID): BookmarkConnection!
+}
+
+input CreateFolderInput {
+  name: String!
+}
+
+input CreateBookmarkInput {
+  title: String!
+  url: String!
+  tags: [String!]
+  folderId: ID!
+}
+
+input UpdateBookmarkInput {
+  title: String
+  url: String
+  tags: [String!]
+}
+
+type Mutation {
+  createFolder(input: CreateFolderInput!): Folder!
+  createBookmark(input: CreateBookmarkInput!): Bookmark!
+  updateBookmark(id: ID!, input: UpdateBookmarkInput!): Bookmark!
+  deleteBookmark(id: ID!): Bookmark!
+  moveBookmark(id: ID!, folderId: ID!): Bookmark!
+}
