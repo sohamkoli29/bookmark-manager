@@ -1,16 +1,10 @@
-import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import type { Mock } from "bun:test";
+import { mock } from "bun:test";
 import { GraphQLError } from "graphql";
+import { bookmarkResolvers } from "../../src/resolvers/bookmark.resolver.js";
 import type { GraphQLContext } from "../../src/lib/context.js";
 import type { Bookmark, Folder } from "@prisma/client";
-
-const paginateBookmarksMock = mock();
-
-mock.module("../../src/lib/pagination.js", () => ({
-  paginateBookmarks: paginateBookmarksMock,
-}));
-
-const { bookmarkResolvers } = await import("../../src/resolvers/bookmark.resolver.js");
 
 interface MockPrisma {
   folder: {
@@ -19,6 +13,7 @@ interface MockPrisma {
   };
   bookmark: {
     findUnique: Mock<(...args: unknown[]) => Promise<Bookmark | null>>;
+    findMany: Mock<(...args: unknown[]) => Promise<Bookmark[]>>;
     create: Mock<(...args: unknown[]) => Promise<Bookmark>>;
     update: Mock<(...args: unknown[]) => Promise<Bookmark>>;
     delete: Mock<(...args: unknown[]) => Promise<Bookmark>>;
@@ -28,7 +23,7 @@ interface MockPrisma {
 function createContext(): { ctx: GraphQLContext; prisma: MockPrisma } {
   const prisma: MockPrisma = {
     folder: { findUnique: mock(), findUniqueOrThrow: mock() },
-    bookmark: { findUnique: mock(), create: mock(), update: mock(), delete: mock() },
+    bookmark: { findUnique: mock(), findMany: mock(), create: mock(), update: mock(), delete: mock() },
   };
   return { ctx: { prisma } as unknown as GraphQLContext, prisma };
 }
@@ -47,10 +42,6 @@ const sampleBookmark: Bookmark = {
   folderId: "folder_1",
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
 };
-
-beforeEach(() => {
-  paginateBookmarksMock.mockClear();
-});
 
 describe("bookmarkResolvers.Mutation.createBookmark", () => {
   test("creates a bookmark when title, url are valid and the folder exists", async () => {
@@ -183,8 +174,8 @@ describe("bookmarkResolvers.Mutation.deleteBookmark", () => {
 
 describe("bookmarkResolvers.Query.bookmarks", () => {
   test("builds a where clause with folderId and case-insensitive search when both are given", async () => {
-    const { ctx } = createContext();
-    paginateBookmarksMock.mockResolvedValue({ items: [], endCursor: null, hasNextPage: false });
+    const { ctx, prisma } = createContext();
+    prisma.bookmark.findMany.mockResolvedValue([]);
 
     await bookmarkResolvers.Query.bookmarks(
       null,
@@ -192,7 +183,7 @@ describe("bookmarkResolvers.Query.bookmarks", () => {
       ctx
     );
 
-    const callArgs = paginateBookmarksMock.mock.calls[0]?.[0] as {
+    const callArgs = prisma.bookmark.findMany.mock.calls[0]?.[0] as {
       where: { folderId?: string; title?: { contains: string; mode: string } };
     };
     expect(callArgs.where.folderId).toBe("folder_1");
@@ -200,13 +191,35 @@ describe("bookmarkResolvers.Query.bookmarks", () => {
   });
 
   test("omits folderId and title filters when neither is provided", async () => {
-    const { ctx } = createContext();
-    paginateBookmarksMock.mockResolvedValue({ items: [], endCursor: null, hasNextPage: false });
+    const { ctx, prisma } = createContext();
+    prisma.bookmark.findMany.mockResolvedValue([]);
 
     await bookmarkResolvers.Query.bookmarks(null, {}, ctx);
 
-    const callArgs = paginateBookmarksMock.mock.calls[0]?.[0] as { where: Record<string, unknown> };
+    const callArgs = prisma.bookmark.findMany.mock.calls[0]?.[0] as { where: Record<string, unknown> };
     expect(callArgs.where.folderId).toBeUndefined();
     expect(callArgs.where.title).toBeUndefined();
+  });
+
+  test("maps prisma results into edges and pageInfo", async () => {
+    const { ctx, prisma } = createContext();
+    prisma.bookmark.findMany.mockResolvedValue([sampleBookmark]);
+
+    const result = await bookmarkResolvers.Query.bookmarks(null, { take: 1 }, ctx);
+
+    expect(result.edges).toEqual([{ cursor: sampleBookmark.id, node: sampleBookmark }]);
+    expect(result.pageInfo).toEqual({ endCursor: sampleBookmark.id, hasNextPage: false });
+  });
+});
+
+describe("bookmarkResolvers.Bookmark.folder", () => {
+  test("resolves the parent folder by folderId", async () => {
+    const { ctx, prisma } = createContext();
+    prisma.folder.findUniqueOrThrow.mockResolvedValue(sampleFolder);
+
+    const result = await bookmarkResolvers.Bookmark.folder(sampleBookmark, {}, ctx);
+
+    expect(result).toEqual(sampleFolder);
+    expect(prisma.folder.findUniqueOrThrow).toHaveBeenCalledWith({ where: { id: "folder_1" } });
   });
 });
