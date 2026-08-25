@@ -134,4 +134,6 @@ If this became a real production system:
 - **API versioning** — schema evolution via deprecation directives first; a `/graphql/v2` split only if a breaking change is unavoidable.
 - **Scaling** — connection pooling (PgBouncer) once concurrent load grows, read replicas for the `bookmarks` search/list path, and horizontal scaling of the Yoga server behind a load balancer since it's stateless.
 
+> **Note:** the sanity script, Dockerfile, and GitHub Actions workflow above were completed as optional bonus signals called out in the assignment — not required core scope.
+
 None of the above is implemented — intentionally out of scope for this assignment.
