@@ -9,6 +9,8 @@
     "gendb": "bunx prisma migrate dev",
     "generate": "bunx prisma generate",
     "test": "bun test",
+     "test:unit": "bun test tests/unit",
+    "test:integration": "bun test tests/integration",
     "lint": "eslint src tests",
     "typecheck": "tsc --noEmit",
     "sanity": "bun run lint && bun run typecheck && bun run test"
