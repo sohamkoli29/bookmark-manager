@@ -17,5 +17,17 @@ services:
       timeout: 5s
       retries: 5
 
+  app:
+    build: .
+    container_name: bookmark-manager-app
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: "postgresql://bookmark_user:bookmark_pass@postgres:5432/bookmark_manager?schema=public"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   bookmark_pg_data:
